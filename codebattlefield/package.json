@@ -1,0 +1,22 @@
+{
+  "name": "codebattlefield",
+  "version": "1.0.0",
+  "description": "Real-time competitive coding platform",
+  "private": true,
+  "author": "",
+  "license": "ISC",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run start --workspace=backend\"",
+    "frontend": "npm run dev --workspace=frontend",
+    "backend": "npm run start --workspace=backend",
+    "install-all": "npm install",
+    "build": "npm run build --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

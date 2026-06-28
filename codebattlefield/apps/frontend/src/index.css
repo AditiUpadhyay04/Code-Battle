@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Jo custom body style humne pehle likha tha, wo yahan aise aayega */
+@theme {
+  --color-dark: #0f172a;
+}
+
+body {
+  background-color: var(--color-dark);
+  color: white;
+}
