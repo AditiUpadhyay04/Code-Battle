@@ -365,17 +365,43 @@ app.get("/", (req, res) => res.send("CodeBattle Realtime Engine Online 🚀"));
 app.post("/api/auth/check-username", async (req, res) => {
   try {
     const { username } = req.body;
-    if (!username)
-      return res.status(400).json({ error: "Username is required" });
+
+    if (!username || typeof username !== "string" || !username.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Username is required",
+      });
+    }
+
+    const cleanUsername = username.trim();
+
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
-      .eq("username", username.trim())
+      .eq("username", cleanUsername)
       .maybeSingle();
-    if (error) return res.status(500).json({ error: error.message });
-    return res.json({ exists: !!data, user: data || null });
+
+    if (error) {
+      console.error("CHECK USERNAME SUPABASE ERROR:", error);
+
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      exists: Boolean(data),
+      user: data || null,
+    });
   } catch (err) {
-    return res.status(500).json({ error: "Server check error" });
+    console.error("CHECK USERNAME SERVER ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Server check error",
+    });
   }
 });
 
@@ -660,6 +686,7 @@ io.on("connection", (socket) => {
 
   // 5. Code Run (Sample Cases + Progress Sync)
   socket.on("run_code", async ({ roomId, code, problemId }) => {
+    console.log("✅ BACKEND RECEIVED run_code EVENT");
     try {
       let targetRoomId = roomId;
       let room = activeRooms[targetRoomId];

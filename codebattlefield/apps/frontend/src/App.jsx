@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { io } from "socket.io-client";
 import Editor from "@monaco-editor/react";
 import { generateTemplate } from "./utils/templateGenerator";
@@ -60,6 +60,7 @@ function App() {
 
   const [isRunningTestcases, setIsRunningTestcases] = useState(false);
   const [runResults, setRunResults] = useState(null);
+  const runTimeoutRef = useRef(null);
 
   const [leaderboard, setLeaderboard] = useState([]);
   const [selectedDifficulty, setSelectedDifficulty] = useState("Easy");
@@ -127,6 +128,7 @@ function App() {
 
   const loadLanguageCode = (currentProblem, lang) => {
     if (!currentProblem) return;
+
     let rawCode = "";
 
     if (currentProblem.base_codes && currentProblem.base_codes[lang]) {
@@ -142,11 +144,23 @@ function App() {
         camelCaseFuncName = `_${camelCaseFuncName}`;
       }
 
-      rawCode = generateTemplate(lang, camelCaseFuncName);
+      rawCode = generateTemplate(
+        lang,
+        camelCaseFuncName,
+        currentProblem.sampleCases || [],
+      );
     }
-    let formattedCode = typeof rawCode === "string" ? rawCode : "";
+
+    const formattedCode = typeof rawCode === "string" ? rawCode : "";
+
     setCode(formattedCode.replace(/\\n/g, "\n").replace(/\\t/g, "    "));
   };
+
+  useEffect(() => {
+    return () => {
+      if (runTimeoutRef.current) clearTimeout(runTimeoutRef.current);
+    };
+  }, []);
 
   // ─── STABLE SOCKET LISTENERS ───
   useEffect(() => {
@@ -208,8 +222,6 @@ function App() {
       setTestResults([]);
       setCompileError("");
       setIsCreatingRoom(false);
-
-      loadLanguageCode(data.problem, language);
     };
 
     const handleTimerTick = (data) => {
@@ -225,9 +237,22 @@ function App() {
     };
 
     const handleRunResult = (data) => {
+      console.log("Run Code result received:", data);
+
       setIsRunningTestcases(false);
       setRunResults(data);
-      if (data.results) setTestResults(data.results);
+
+      // Backend sends test cases under "testResults"
+      const results = data?.testResults ?? data?.results ?? [];
+      setTestResults(results);
+
+      setCompileError(data?.compileError || "");
+
+      if (data?.compileError) {
+        setConsoleTab("output");
+      } else {
+        setConsoleTab("testcases");
+      }
     };
 
     const handleBattleResult = (result) => {
@@ -301,12 +326,12 @@ function App() {
     };
   }, [socket]);
 
-  // Language switch sync (Iske theek neeche add karo)
+  // Load the starter template when a battle starts, a new problem arrives, or language changes.
   useEffect(() => {
     if (problem && appState === "BattleActive") {
       loadLanguageCode(problem, language);
     }
-  }, [language]);
+  }, [problem, language, appState]);
 
   useEffect(() => {
     if (appState === "WelcomeHub") {
@@ -494,9 +519,7 @@ function App() {
   };
 
   const handleLanguageChange = (e) => {
-    const selectedLang = e.target.value;
-    setLanguage(selectedLang);
-    loadLanguageCode(problem, selectedLang);
+    setLanguage(e.target.value);
   };
 
   const handleCodeChange = (value) => {
@@ -526,11 +549,20 @@ function App() {
   };
 
   const handleRunCode = () => {
+    console.log("Emitting run_code:", {
+      connected: socket.connected,
+      roomId,
+      problemId: problem.id,
+      language,
+    });
     if (!problem || !problem.id) {
       alert("Error: Problem data missing.");
       return;
     }
 
+    if (runTimeoutRef.current) clearTimeout(runTimeoutRef.current);
+    setCompileError("");
+    setRunResults(null);
     setIsRunningTestcases(true);
     setConsoleTab("testcases");
 
@@ -540,6 +572,16 @@ function App() {
       problemId: problem.id,
       language: language || "javascript",
     });
+
+    // Avoid leaving the Run Code button stuck if the server never replies.
+    runTimeoutRef.current = setTimeout(() => {
+      setIsRunningTestcases(false);
+      setCompileError(
+        'No response received from the backend for Run Code. Check that the backend handles the "run_code" socket event and emits "run_result".',
+      );
+      setConsoleTab("output");
+      runTimeoutRef.current = null;
+    }, 12000);
   };
 
   const handleResetCode = () => {
